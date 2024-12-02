@@ -2,7 +2,7 @@ import docker
 import json
 import sys
 import base64
-from evaluation import evaluation
+from RedCode_Exec.evaluation import evaluation
 from collections import Counter
 import json
 import datetime
@@ -12,10 +12,81 @@ import os
 import argparse
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-print(f"current_dir = {current_dir}")
+# print(f"current_dir = {current_dir}")
+
 time_now = datetime.datetime.now()+datetime.timedelta(hours=8)
 time_stamp = str(time_now).replace(' ', '_')
 
+def create_docker(agent_name, llm, is_OCI):
+    client = docker.from_env()
+    container_name = f'{agent_name}_{llm}_container'
+
+    try:
+        # Try to get an existing container
+        container = client.containers.get(container_name)
+        if container.status == 'running':
+            print(f'Container {container_name} already exists and is running, ID: {container.id}')
+            return container
+        else:
+            print(f'Container {container_name} exists but is not running, attempting to start...')
+            container.start()
+            print(f'Container {container_name} has been started, ID: {container.id}')
+            return container
+    except docker.errors.NotFound:
+        print(f'Container {container_name} does not exist, creating a new container...')
+        # Check if the image exists
+        try:
+            client.images.get('redcode')
+            image_exists = True
+        except docker.errors.ImageNotFound:
+            image_exists = False
+
+        # Build the image if it doesn't exist
+        if not image_exists:
+            build_args = {'is_OCI': 'true' if is_OCI else 'false'}
+            try:
+                image, build_logs = client.images.build(
+                    path='../../environment',
+                    tag='redcode',
+                    buildargs=build_args
+                )
+                for log in build_logs:
+                    if 'stream' in log:
+                        print(log['stream'].strip())
+            except Exception as e:
+                print(f"Error occurred while building the Docker image: {e}")
+                return None
+
+        # Run a new container
+        try:
+            container = client.containers.run(
+                'redcode',
+                name=container_name,
+                detach=True,
+                tty=True,
+                device_requests=[
+                    docker.types.DeviceRequest(count=-1, capabilities=[['gpu']])
+                ],
+                command="bash"
+            )
+            print(f'Container {container.name} has been created and is running, ID: {container.id}')
+            return container
+        except Exception as e:
+            print(f"Error occurred while running the Docker container: {e}")
+            return None
+
+
+def open_code_interpreter(llm, start_risky_id, end_risky_id):
+    print(f"Running OpenCodeInterpreter with LLM: {llm} from Risky ID: {start_risky_id} to {end_risky_id}")
+    container = create_docker("OCI", llm, is_OCI=True)
+    if container:
+        try:
+            OCI(container, llm, start_risky_id, end_risky_id)
+        finally:
+            container.stop()
+            # container.remove()
+            print(f"Docker container {container.name} has been stopped and removed.")
+            
 def get_execution_and_response(container,commands_to_execute):
     executions = []
     responses = [] 
@@ -68,15 +139,19 @@ def run_docker(container,jsonfile,model_name,index,prompt):
     response_str = ' '.join(response)
 
 
-    conversation_path = f'../../../result/OCI/conversation_log/index{index.split("_")[0]}_{time_stamp}.json'
+    conversation_path = f'../../../results/OCI/conversation_log/index{index.split("_")[0]}_{time_stamp}.json'
     conversation_path = os.path.join(current_dir, conversation_path)
     # Ensure directory exists
     os.makedirs(os.path.dirname(conversation_path), exist_ok=True)
 
-    evaluation_log_path = f'../../../result/OCI/evaluation_log'
+    evaluation_log_path = f'../../../results/OCI/evaluation_log/index{index.split("_")[0]}_evaluation_results.txt'
     evaluation_log_path = os.path.join(current_dir, evaluation_log_path)
     # Ensure directory exists
     os.makedirs(os.path.dirname(evaluation_log_path), exist_ok=True)
+
+    evaluation_log_path = f'../../../results/OCI/evaluation_log'
+    evaluation_log_path = os.path.join(current_dir, evaluation_log_path)
+
 
     if execution:
         # If there are any execution results, evaluate based on execution
@@ -226,7 +301,7 @@ def OCI(container,llm, start_risky_id, end_risky_id):
             "Dauration": str(duration)
         }
 
-        logfile_relative_path = f'../../../result/OCI/log/index{identifier}_{time_stamp}.json'
+        logfile_relative_path = f'../../../results/OCI/log/index{identifier}_{time_stamp}.json'
         logfile = os.path.join(current_dir, logfile_relative_path)
         # Ensure directory exists
         os.makedirs(os.path.dirname(logfile), exist_ok=True)
