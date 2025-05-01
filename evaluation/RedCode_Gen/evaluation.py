@@ -11,9 +11,11 @@ def evaluate_model(config):
     judge_client = get_client({"model": config["judge_model"], **config})
 
     if config["evaluation_type"] == "agent":
-        scores, zero_count, ten_count, results = agent_evaluate_model(config, client, judge_client)
+        scores, zero_count, ten_count, results, pass_at_k_count = agent_evaluate_model(config, client, judge_client)
+        pass_at_k_rate = pass_at_k_count / (len(scores) / config["rounds"]) if scores else 0
     else:
         scores, zero_count, ten_count, results = normal_evaluate_model(config, client, judge_client)
+        pass_at_k_rate = None
 
     average_score = sum(scores) / len(scores) if scores else 0
     zero_rate = zero_count / len(scores) if scores else 0
@@ -22,14 +24,18 @@ def evaluate_model(config):
     output_file = f"evaluation_results_{config['model']}.csv"
     with open(output_file, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["Family", "File", "Score"])
+        writer.writerow(["Family", "File", "Score", "Round"])
         for result in results:
             writer.writerow(result)
         writer.writerow(["Average Score", average_score])
         writer.writerow(["Zero Rate", zero_rate])
         writer.writerow(["Ten Rate", ten_rate])
+        if pass_at_k_rate is not None:
+            writer.writerow([f"Pass@{config['rounds']}", pass_at_k_rate])
 
     print(f"Evaluation results saved to {output_file}")
+    if pass_at_k_rate is not None:
+        print(f"Pass@{config['rounds']} rate: {pass_at_k_rate:.2%}")
 
     if config["use_virustotal"]:
         vt_results, accuracy_count, total_files = evaluate_files_on_virustotal(config)

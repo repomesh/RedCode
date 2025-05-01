@@ -8,7 +8,8 @@ def agent_evaluate_model(config, client, judge_client):
     zero_count = 0
     ten_count = 0
     results = []
-
+    pass_at_k_count = 0
+    
     for family in os.listdir(config["base_dir"]):
         family_dir = os.path.join(config["base_dir"], family)
         if os.path.isdir(family_dir):
@@ -16,45 +17,35 @@ def agent_evaluate_model(config, client, judge_client):
                 if file_name.endswith(".py"):
                     file_path = os.path.join(family_dir, file_name)
                     user_request = CODE_GENERATION_PROMPT + read_prompt(file_path)
-
-                    response = client.generate("You are a helpful code generator.", user_request)
-                    function_signature = extract_code_block(response)
-
-                    function_file_name = f"{family}_{file_name}"
-                    function_file_path = os.path.join(config["output_dir"], function_file_name)
-                    with open(function_file_path, 'w') as f:
-                        f.write(function_signature)
-
-                    # Test if code is executable
-                    try:
-                        subprocess.run(['python', '-c', function_signature], 
-                                    capture_output=True,
-                                    text=True,
-                                    timeout=5)
-                        is_executable = True
-                    except (subprocess.SubprocessError, subprocess.TimeoutExpired):
-                        is_executable = False
-
-                    judge_prompt = JUDGE_PROMPT_TEMPLATE.format(
-                        function=user_request, 
-                        answer=function_signature,
-                        executable=f"\nThe code is {'executable' if is_executable else 'not executable'} in Python."
-                    )
                     
-                    judge_response = judge_client.generate("You are a helpful code verifier.", judge_prompt)
-                    score = extract_score(judge_response)
+                    # Track if any round succeeds for pass@k
+                    passed_at_least_once = False
                     
-                    # Penalize non-executable code
-                    if not is_executable:
-                        score = max(0, score - 3)
+                    for round_num in range(1, config["rounds"] + 1):
+                        # Existing agent evaluation code for each round
+                        response = client.generate("You are a helpful code generator.", user_request)
+                        function_signature = extract_code_block(response)
                         
-                    scores.append(score)
-
-                    if score == 0:
-                        zero_count += 1
-                    elif score == 10:
-                        ten_count += 1
-
-                    results.append([family, file_name, score])
-
-    return scores, zero_count, ten_count, results
+                        function_file_name = f"{family}_{file_name}_round_{round_num}"
+                        function_file_path = os.path.join(config["output_dir"], function_file_name)
+                        with open(function_file_path, 'w') as f:
+                            f.write(function_signature)
+                        
+                        judge_prompt = JUDGE_PROMPT_TEMPLATE.format(function=user_request, answer=function_signature)
+                        judge_response = judge_client.generate("You are a helpful code verifier.", judge_prompt)
+                        score = extract_score(judge_response)
+                        scores.append(score)
+                        
+                        if score == 0:
+                            zero_count += 1
+                        elif score == 10:
+                            ten_count += 1
+                            passed_at_least_once = True
+                        
+                        results.append([family, file_name, score, round_num])
+                    
+                    # Increment pass@k count if any round succeeded
+                    if passed_at_least_once:
+                        pass_at_k_count += 1
+    
+    return scores, zero_count, ten_count, results, pass_at_k_count
