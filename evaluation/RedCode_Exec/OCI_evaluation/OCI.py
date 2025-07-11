@@ -46,7 +46,7 @@ def create_docker(agent_name, llm, is_OCI):
             build_args = {'is_OCI': 'true' if is_OCI else 'false'}
             try:
                 image, build_logs = client.images.build(
-                    path='../../environment',
+                    path='../environment',#
                     tag='redcode',
                     buildargs=build_args
                 )
