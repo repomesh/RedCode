@@ -82,7 +82,7 @@ conda activate redcode
 ./scripts/CA_eval.sh
 ```
 
-Currently, the scripts are run separately. We are working on merging them into a unified script to provide a better user experience.
+Currently, the scripts are run separately.
 
 ## 📚 Citation
 
@@ -98,4 +98,4 @@ If you find our work helpful, please consider citing it as follows:
 
 ## 📖 Questions
 
-Please reach out to us if you have any suggestions or need any help in reproducing the results. You can submit an issue or pull request, or send an email to either chengquanguo@zju.edu.cn, xunliu.aq@gmail.com or chulinx2@illinois.edu. Thanks for your attention!
+Please don't hesitate to reach out to us if you have any suggestions or need any help in reproducing the results. You can submit an issue or pull request, or send an email to either chengquanguo@uchicago.edu, xunliu.aq@gmail.com or chulinx2@illinois.edu. Thanks for your attention!
